@@ -19,9 +19,7 @@ export default function ProjectDataPanel({ project, onUpdate, onDelete }: {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {([
             ['Projekti nimetus', 'nimi'],
-            ['Juhtumi number', 'nr'],
-            ['Aadress', 'aadress'],
-            ['Katastrinumber', 'katastr'],
+            ['Juhtumi / protokolli number', 'nr'],
           ] as [string, keyof typeof meta][]).map(([label, field]) => (
             <div key={field} className="space-y-1">
               <label className="label-cap">{label}</label>

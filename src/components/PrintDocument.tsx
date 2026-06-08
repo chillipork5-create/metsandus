@@ -9,7 +9,7 @@ export default function PrintDocument({ project, onScreen = false }: {
 }) {
   if (!project) return null;
 
-  const { meta, lisa2, lisa3 } = project;
+  const { meta, uldinfo, lisa2, lisa3 } = project;
   const lisa2Total = lisa2.rows.reduce((acc, r) => acc + getLisa2Rate(r.diam, r.grupp) * r.arv * lisa2.kordaja, 0);
   const hasLisa2 = lisa2.rows.length > 0;
 
@@ -69,12 +69,12 @@ export default function PrintDocument({ project, onScreen = false }: {
       {/* Metadata */}
       <div className="grid grid-cols-2 gap-6 mb-8 border-b border-slate-200 pb-6">
         <table className="w-full text-xs"><tbody>
-          <tr><td className="py-1 text-slate-500 w-32">Aadress:</td><td className="py-1 font-bold">{meta.aadress || '—'}</td></tr>
-          <tr><td className="py-1 text-slate-500">Katastritunnus:</td><td className="py-1 font-bold">{meta.katastr || '—'}</td></tr>
+          <tr><td className="py-1 text-slate-500 w-32">Maakond / vald:</td><td className="py-1 font-bold">{[uldinfo?.maakond, uldinfo?.vald].filter(Boolean).join(', ') || '—'}</td></tr>
+          <tr><td className="py-1 text-slate-500">Katastritunnus:</td><td className="py-1 font-bold">{uldinfo?.katastr || '—'}</td></tr>
           <tr><td className="py-1 text-slate-500">Raie liik:</td><td className="py-1 font-bold">{meta.raieliik || '—'}</td></tr>
         </tbody></table>
         <table className="w-full text-xs"><tbody>
-          <tr><td className="py-1 text-slate-500 w-32">Eraldise pindala:</td><td className="py-1 font-bold">{meta.pindala ? `${meta.pindala} ha` : '—'}</td></tr>
+          <tr><td className="py-1 text-slate-500 w-32">Eraldise pindala:</td><td className="py-1 font-bold">{uldinfo?.pindala ? `${uldinfo.pindala} ha` : '—'}</td></tr>
           <tr><td className="py-1 text-slate-500">Kaitseala kordaja:</td><td className="py-1 font-bold">{lisa2.kordaja > 1 ? `×${lisa2.kordaja}` : '×1 (tavavöönd)'}</td></tr>
         </tbody></table>
       </div>

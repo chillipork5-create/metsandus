@@ -11,9 +11,11 @@ import KannuPanel from './components/KannuPanel';
 import TaiusPanel from './components/TaiusPanel';
 import TagavaraPanel from './components/TagavaraPanel';
 import ProjectDataPanel from './components/ProjectDataPanel';
+import UldinfoPanel from './components/UldinfoPanel';
 import PrintDocument from './components/PrintDocument';
 
 const TABS: { id: TabType; label: string }[] = [
+  { id: 'uldinfo', label: 'Üldinfo' },
   { id: 'lisa2',   label: 'Lisa 2' },
   { id: 'lisa3',   label: 'Lisa 3' },
   { id: 'kannu',   label: 'Känd' },
@@ -25,7 +27,7 @@ const TABS: { id: TabType; label: string }[] = [
 export default function App() {
   const [projects, setProjects]         = useState<Project[]>(getProjects);
   const [currentId, setCurrentId]       = useState<string | null>(null);
-  const [activeTab, setActiveTab]       = useState<TabType>('lisa2');
+  const [activeTab, setActiveTab]       = useState<TabType>('uldinfo');
   const [isModalOpen, setIsModalOpen]   = useState(false);
   const [newProjectName, setNewName]    = useState('');
   const [viewMode, setViewMode]         = useState<'editor' | 'report'>('editor');
@@ -135,7 +137,7 @@ export default function App() {
                 {p.meta.nimi}
               </div>
               <div className="text-[10px] font-mono truncate opacity-60">
-                {p.meta.aadress || p.meta.katastr || 'Andmed täitmata'}
+                {p.uldinfo?.katastr || p.uldinfo?.eraldis || 'Andmed täitmata'}
               </div>
             </button>
           ))
@@ -328,6 +330,9 @@ export default function App() {
                 <div className="max-w-5xl mx-auto pb-12">
                   {project && (
                     <>
+                      <PanelContainer isActive={activeTab === 'uldinfo'}>
+                        <UldinfoPanel project={project} onUpdate={updateProject} />
+                      </PanelContainer>
                       <PanelContainer isActive={activeTab === 'lisa2'}>
                         <Lisa2Panel project={project} onUpdate={updateProject} />
                       </PanelContainer>
