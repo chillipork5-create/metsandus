@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { ArrowRight, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { Project, MootmisLoendus, MootmisData, TakseerRida, KokkuvoteRida } from '../types';
 import { calcG, getGn, stumpToD13, calcStandFactor } from '../lib/calculations';
@@ -13,18 +13,15 @@ const LIIK_TO_CALC: Record<string, string> = {
 
 function genId() { return Math.random().toString(36).substr(2, 9); }
 
-// CM range: 1cm steps from 1 to 100
 const MIN_CM = 1;
-const MAX_CM = 80; // default visible max; user can expand
-const DEFAULT_ROWS = 40; // rows shown by default
+const MAX_CM = 80;
+const DEFAULT_ROWS = 40;
 
-// Build the cm row labels: "0.1–1", "1.1–2", ..., "N-1.1–N"
 function cmLabel(cm: number): string {
   if (cm === 1) return '0.1–1';
   return `${cm - 1}.1–${cm}`;
 }
 
-// Get sorted unique cm values that have data, to determine expanded range needed
 function usedCms(loendus: MootmisLoendus): number[] {
   const cms = new Set<number>();
   for (const liik of Object.values(loendus)) {
@@ -42,18 +39,16 @@ interface LoendusTableProps {
 
 function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
   const [selectedLiik, setSelectedLiik] = useState<string>(PUULIIGID[0]);
-  const [visibleMax, setVisibleMax] = useState(DEFAULT_ROWS);
+  const [focusedCm, setFocusedCm] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const cellRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Which species have any data
   const activeSpecies = useMemo(() =>
     PUULIIGID.filter(l => loendus[l] && Object.values(loendus[l]).some(v => v > 0)),
     [loendus]
   );
 
-  // Compute how many rows we need: at least DEFAULT_ROWS, or up to max used cm
   const maxUsedCm = useMemo(() => {
     const cms = usedCms(loendus);
     return cms.length > 0 ? Math.max(...cms) : 0;
@@ -62,14 +57,12 @@ function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
   const rowCount = expanded ? Math.max(MAX_CM, maxUsedCm) : Math.max(DEFAULT_ROWS, maxUsedCm);
   const rows = Array.from({ length: rowCount }, (_, i) => i + MIN_CM);
 
-  // All species that should be shown as columns (selected + any with data)
   const columns = useMemo(() => {
     const cols = new Set<string>(activeSpecies);
     cols.add(selectedLiik);
     return PUULIIGID.filter(l => cols.has(l));
   }, [selectedLiik, activeSpecies]);
 
-  // Totals per species
   const totals = useMemo(() => {
     const t: Record<string, number> = {};
     for (const liik of columns) {
@@ -96,7 +89,6 @@ function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
     onChange(newLoendus);
   }, [loendus, onChange]);
 
-  // Keyboard navigation: arrow keys move between cells
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, liik: string, cm: number) => {
     const colIdx = columns.indexOf(liik);
     let targetLiik = liik;
@@ -118,21 +110,16 @@ function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
     }
 
     if (e.key !== 'Enter' && e.key !== 'Tab') e.preventDefault();
-
     if (targetCm < MIN_CM || targetCm > rowCount) return;
-
-    // Auto-expand if navigating beyond visible rows
-    if (targetCm > visibleMax) setVisibleMax(prev => Math.max(prev, targetCm + 5));
 
     const key = `${targetLiik}__${targetCm}`;
     const el = cellRefs.current.get(key);
     if (el) {
       el.focus();
       el.select();
-      // Scroll into view
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
-  }, [columns, rowCount, visibleMax]);
+  }, [columns, rowCount]);
 
   const refCallback = useCallback((liik: string, cm: number) => (el: HTMLInputElement | null) => {
     const key = `${liik}__${cm}`;
@@ -167,7 +154,7 @@ function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
       {/* Table */}
       <div
         ref={containerRef}
-        className={`border border-slate-200 rounded-xl overflow-hidden transition-all ${expanded ? '' : ''}`}
+        className="border border-slate-200 rounded-xl overflow-hidden"
         style={{ resize: 'vertical', overflow: 'auto', minHeight: 180, maxHeight: expanded ? 700 : 380 }}
       >
         <table className="border-collapse text-[11px] w-full" style={{ tableLayout: 'fixed' }}>
@@ -196,12 +183,21 @@ function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
           <tbody>
             {rows.map(cm => {
               const hasAnyData = columns.some(l => (loendus[l]?.[String(cm)] || 0) > 0);
+              const isActiveFocusRow = focusedCm === cm;
               return (
                 <tr
                   key={cm}
-                  className={`border-b border-slate-100 last:border-0 ${hasAnyData ? 'bg-forest-50/40' : 'hover:bg-slate-50'}`}
+                  className={`border-b border-slate-100 last:border-0 transition-colors ${
+                    isActiveFocusRow
+                      ? 'bg-amber-50 ring-1 ring-inset ring-amber-300'
+                      : hasAnyData
+                      ? 'bg-forest-50/40'
+                      : 'hover:bg-slate-50'
+                  }`}
                 >
-                  <td className="px-2 py-0.5 font-mono text-[10px] text-slate-400 select-none">
+                  <td className={`px-2 py-0.5 font-mono text-[10px] select-none font-bold ${
+                    isActiveFocusRow ? 'text-amber-700' : 'text-slate-400'
+                  }`}>
                     {cmLabel(cm)}
                   </td>
                   {columns.map(liik => {
@@ -210,7 +206,15 @@ function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
                     return (
                       <td
                         key={liik}
-                        className={`px-1 py-0.5 text-center ${isActive ? 'bg-forest-50/60' : ''}`}
+                        className={`px-1 py-0.5 text-center ${
+                          isActiveFocusRow && isActive
+                            ? 'bg-amber-100/60'
+                            : isActiveFocusRow
+                            ? ''
+                            : isActive
+                            ? 'bg-forest-50/60'
+                            : ''
+                        }`}
                       >
                         <input
                           ref={refCallback(liik, cm)}
@@ -220,7 +224,8 @@ function LoendusTable({ mode, loendus, onChange }: LoendusTableProps) {
                           placeholder=""
                           onChange={e => setValue(liik, cm, e.target.value)}
                           onKeyDown={e => handleKeyDown(e, liik, cm)}
-                          onFocus={() => setSelectedLiik(liik)}
+                          onFocus={() => { setSelectedLiik(liik); setFocusedCm(cm); }}
+                          onBlur={() => setFocusedCm(null)}
                           className={`w-full text-center font-mono rounded text-[11px] py-0.5 px-1 border transition-all
                             ${val ? 'font-bold' : ''}
                             ${isActive
@@ -284,6 +289,7 @@ export default function MootmisPanel({ project, onUpdate }: {
     onUpdate({ uldinfo: { ...uldinfo, mootmised: { ...mootmised, ...patch } } });
   }, [uldinfo, mootmised, onUpdate]);
 
+  // Get height from the pre-harvest takseer row matching the selected rinne
   const korgusRaieEelsest = useMemo(() => {
     const rida = uldinfo.takseerRead.find(r => r.rinne === mootmised.rinne && r.korgus);
     return parseFloat(rida?.korgus || '0');
@@ -291,7 +297,7 @@ export default function MootmisPanel({ project, onUpdate }: {
 
   const pindala = parseFloat(mootmised.pindala) || 0;
 
-  // Compute results from puudLoendus
+  // ── Compute results from puudLoendus (living trees left standing) ──
   const puudArvutused = useMemo(() => {
     const loendus = mootmised.puudLoendus;
     if (!pindala || Object.keys(loendus).length === 0) return null;
@@ -312,20 +318,24 @@ export default function MootmisPanel({ project, onUpdate }: {
       const gHa = totalG / pindala;
       const calcSpecies = LIIK_TO_CALC[liik] || 'mand';
       const gn = korgusRaieEelsest > 0 ? getGn(calcSpecies, korgusRaieEelsest) : 0;
-      const taius = gn > 0 ? (gHa / gn) * 100 : 0;
-      return [{ liik, count, avgD, gHa, taius, tkHa: count / pindala }];
+      const taius = gn > 0 ? (gHa / gn) : 0;
+      return [{ liik, count, avgD, totalG, gHa, gn, taius, tkHa: count / pindala }];
     });
 
     if (rows.length === 0) return null;
+    const totalGHa = rows.reduce((a, r) => a + r.gHa, 0);
+    // weighted average Gn using each species' gn
+    const totalGn = rows.reduce((a, r) => a + r.gn, 0);
+    const avgTaius = totalGn > 0 ? totalGHa / (totalGn / rows.length) : rows.reduce((a, r) => a + r.taius, 0) / rows.length;
     return {
       rows,
-      totalG: rows.reduce((a, r) => a + r.gHa, 0),
+      totalGHa,
       totalTk: rows.reduce((a, r) => a + r.tkHa, 0),
-      avgTaius: rows.reduce((a, r) => a + r.taius, 0) / rows.length,
+      avgTaius,
     };
   }, [mootmised.puudLoendus, pindala, korgusRaieEelsest]);
 
-  // Compute results from kandudLoendus
+  // ── Compute results from kandudLoendus (stumps = felled trees) ──
   const kandudArvutused = useMemo(() => {
     const loendus = mootmised.kandudLoendus;
     if (!pindala || Object.keys(loendus).length === 0) return null;
@@ -333,7 +343,7 @@ export default function MootmisPanel({ project, onUpdate }: {
     const rows = PUULIIGID.flatMap(liik => {
       const cmMap = loendus[liik];
       if (!cmMap) return [];
-      let count = 0; let totalMaht = 0; let sumD13 = 0;
+      let count = 0; let totalMaht = 0; let sumD13 = 0; let totalG = 0;
       const calcSpecies = LIIK_TO_CALC[liik] || 'mand';
       for (const [cmStr, arv] of Object.entries(cmMap)) {
         const dKand = parseInt(cmStr);
@@ -341,13 +351,17 @@ export default function MootmisPanel({ project, onUpdate }: {
         const d13 = stumpToD13(calcSpecies, dKand);
         count += arv;
         sumD13 += d13 * arv;
+        totalG += calcG(d13, arv);
         if (korgusRaieEelsest > 0 && d13 > 0) {
           const f = calcStandFactor(calcSpecies, korgusRaieEelsest);
           totalMaht += calcG(d13, arv) * korgusRaieEelsest * f;
         }
       }
       if (!count) return [];
-      return [{ liik, count, avgD13: sumD13 / count, mahtTm: totalMaht, mahtHa: totalMaht / pindala, tkHa: count / pindala }];
+      const avgD13 = sumD13 / count;
+      const gHa = totalG / pindala;
+      const gn = korgusRaieEelsest > 0 ? getGn(calcSpecies, korgusRaieEelsest) : 0;
+      return [{ liik, count, avgD13, totalG, gHa, gn, mahtTm: totalMaht, mahtHa: totalMaht / pindala, tkHa: count / pindala }];
     });
 
     if (rows.length === 0) return null;
@@ -355,36 +369,133 @@ export default function MootmisPanel({ project, onUpdate }: {
       rows,
       totalMahtTm: rows.reduce((a, r) => a + r.mahtTm, 0),
       totalMahtHa: rows.reduce((a, r) => a + r.mahtHa, 0),
+      totalGHa: rows.reduce((a, r) => a + r.gHa, 0),
     };
   }, [mootmised.kandudLoendus, pindala, korgusRaieEelsest]);
 
-  const handleKannaTakseerisse = useCallback(() => {
+  // ── Build raie-järgne from LIVING TREES (puud) ──
+  // These ARE the remaining stand.
+  const handleKannaFromPuud = useCallback(() => {
     if (!puudArvutused) return;
-    const newRows: TakseerRida[] = puudArvutused.rows.map(r => ({
-      id: genId(), rinne: mootmised.rinne, protsent: r.taius.toFixed(0),
-      puuliik: r.liik, tekkeaasta: '', vanus: '', jooksevVanus: '',
-      korgus: korgusRaieEelsest > 0 ? String(korgusRaieEelsest) : '',
-      labimoot: r.avgD.toFixed(1), rinnaspindala: r.gHa.toFixed(2), tekkeviis: 'looduslik',
-      maht: kandudArvutused?.rows.find(k => k.liik === r.liik)?.mahtTm.toFixed(2) || '',
-      mahtHa: kandudArvutused?.rows.find(k => k.liik === r.liik)?.mahtHa.toFixed(2) || '',
-      puudeArv: r.tkHa.toFixed(0),
-    }));
+    const newRows: TakseerRida[] = puudArvutused.rows.map(r => {
+      // Try to carry over tekkeaasta, vanus, jooksevVanus from raie-eelne for matching puuliik
+      const eelneRida = uldinfo.takseerRead.find(er => er.puuliik === r.liik);
+      return {
+        id: genId(),
+        rinne: mootmised.rinne,
+        protsent: (r.taius * 100).toFixed(0),
+        puuliik: r.liik,
+        tekkeaasta: eelneRida?.tekkeaasta || '',
+        vanus: eelneRida?.vanus || '',
+        jooksevVanus: eelneRida?.jooksevVanus || '',
+        korgus: korgusRaieEelsest > 0 ? String(korgusRaieEelsest) : '',
+        labimoot: r.avgD.toFixed(1),
+        rinnaspindala: r.gHa.toFixed(2),
+        tekkeviis: eelneRida?.tekkeviis || 'looduslik',
+        maht: '',
+        mahtHa: '',
+        puudeArv: r.tkHa.toFixed(0),
+      };
+    });
 
     const newKokkuvote = uldinfo.raieJargneKokkuvote.map(r => {
       if (r.rinne === 'Esimene') return {
         ...r,
-        rinnaspindala: puudArvutused.totalG.toFixed(2),
-        taiusProtsent: puudArvutused.avgTaius.toFixed(0),
-        mahtTmHa: kandudArvutused ? kandudArvutused.totalMahtHa.toFixed(2) : r.mahtTmHa,
-        mahtTm: kandudArvutused ? kandudArvutused.totalMahtTm.toFixed(2) : r.mahtTm,
+        rinnaspindala: puudArvutused.totalGHa.toFixed(2),
+        taiusProtsent: (puudArvutused.avgTaius * 100).toFixed(0),
       };
       return r;
     });
 
-    onUpdate({ uldinfo: { ...uldinfo, raieJargneRead: newRows.length > 0 ? newRows : uldinfo.raieJargneRead, raieJargneKokkuvote: newKokkuvote } });
-    setNotification('Andmed kantud raie-järgsesse takseerkirjeldusse!');
-    setTimeout(() => setNotification(null), 3000);
-  }, [puudArvutused, kandudArvutused, mootmised.rinne, korgusRaieEelsest, uldinfo, onUpdate]);
+    onUpdate({ uldinfo: { ...uldinfo, raieJargneRead: newRows, raieJargneKokkuvote: newKokkuvote } });
+    setNotification('Kasvavad puud kantud raie-järgsesse takseerkirjeldusse!');
+    setTimeout(() => setNotification(null), 3500);
+  }, [puudArvutused, mootmised.rinne, korgusRaieEelsest, uldinfo, onUpdate]);
+
+  // ── Build raie-järgne from STUMPS ──
+  // Stumps = felled trees. Raie-järgne = raie-eelne MINUS felled.
+  // We subtract the felled volume/G from each raie-eelne row by species.
+  const handleKannaFromKandud = useCallback(() => {
+    if (!kandudArvutused) return;
+
+    // Build a map of felled G/ha and maht/ha per species
+    const felledByLiik: Record<string, { gHa: number; mahtHa: number; mahtTm: number; tkHa: number }> = {};
+    for (const r of kandudArvutused.rows) {
+      felledByLiik[r.liik] = { gHa: r.gHa, mahtHa: r.mahtHa, mahtTm: r.mahtTm, tkHa: r.tkHa };
+    }
+
+    // Carry over all raie-eelne rows, subtracting felled amounts
+    const newRows: TakseerRida[] = uldinfo.takseerRead
+      .filter(r => r.rinne === mootmised.rinne)
+      .map(r => {
+        const felled = felledByLiik[r.puuliik] || { gHa: 0, mahtHa: 0, mahtTm: 0, tkHa: 0 };
+        const gEelne = parseFloat(r.rinnaspindala) || 0;
+        const mahtHaEelne = parseFloat(r.mahtHa) || 0;
+        const mahtEelne = parseFloat(r.maht) || 0;
+        const tkHaEelne = parseFloat(r.puudeArv) || 0;
+
+        const gJargne = Math.max(0, gEelne - felled.gHa);
+        const mahtHaJargne = Math.max(0, mahtHaEelne - felled.mahtHa);
+        const mahtJargne = Math.max(0, mahtEelne - felled.mahtTm);
+        const tkHaJargne = Math.max(0, tkHaEelne - felled.tkHa);
+
+        // Recalculate täius from new G/ha
+        const calcSpecies = LIIK_TO_CALC[r.puuliik] || 'mand';
+        const gn = korgusRaieEelsest > 0 ? getGn(calcSpecies, korgusRaieEelsest) : 0;
+        const taius = gn > 0 ? (gJargne / gn) * 100 : parseFloat(r.protsent) || 0;
+
+        return {
+          ...r,
+          id: genId(),
+          rinnaspindala: gJargne.toFixed(2),
+          mahtHa: mahtHaJargne > 0 ? mahtHaJargne.toFixed(2) : '',
+          maht: mahtJargne > 0 ? mahtJargne.toFixed(2) : '',
+          puudeArv: tkHaJargne > 0 ? tkHaJargne.toFixed(0) : '',
+          protsent: taius.toFixed(0),
+        };
+      });
+
+    // If no raie-eelne rows for this rinne, fall back to building from kandud data
+    const finalRows = newRows.length > 0 ? newRows : kandudArvutused.rows.map(r => ({
+      id: genId(),
+      rinne: mootmised.rinne,
+      protsent: '',
+      puuliik: r.liik,
+      tekkeaasta: '', vanus: '', jooksevVanus: '',
+      korgus: korgusRaieEelsest > 0 ? String(korgusRaieEelsest) : '',
+      labimoot: r.avgD13.toFixed(1),
+      rinnaspindala: '',
+      tekkeviis: 'looduslik',
+      maht: r.mahtTm.toFixed(2),
+      mahtHa: r.mahtHa.toFixed(2),
+      puudeArv: r.tkHa.toFixed(0),
+    }));
+
+    // Update summary row
+    const totalGJargne = finalRows.reduce((a, r) => a + (parseFloat(r.rinnaspindala) || 0), 0);
+    const totalMahtHaJargne = finalRows.reduce((a, r) => a + (parseFloat(r.mahtHa) || 0), 0);
+    const totalMahtJargne = finalRows.reduce((a, r) => a + (parseFloat(r.maht) || 0), 0);
+
+    // Recalc täius for summary
+    const calcSpeciesFirst = LIIK_TO_CALC[finalRows[0]?.puuliik || ''] || 'mand';
+    const gnFirst = korgusRaieEelsest > 0 ? getGn(calcSpeciesFirst, korgusRaieEelsest) : 0;
+    const avgTaiusStr = gnFirst > 0 ? ((totalGJargne / gnFirst) * 100).toFixed(0) : '';
+
+    const newKokkuvote = uldinfo.raieJargneKokkuvote.map(r => {
+      if (r.rinne === 'Esimene') return {
+        ...r,
+        rinnaspindala: totalGJargne.toFixed(2),
+        taiusProtsent: avgTaiusStr,
+        mahtTm: totalMahtJargne > 0 ? totalMahtJargne.toFixed(1) : r.mahtTm,
+        mahtTmHa: totalMahtHaJargne > 0 ? totalMahtHaJargne.toFixed(1) : r.mahtTmHa,
+      };
+      return r;
+    });
+
+    onUpdate({ uldinfo: { ...uldinfo, raieJargneRead: finalRows, raieJargneKokkuvote: newKokkuvote } });
+    setNotification('Raie-järgne takseer arvutatud (raie-eelne miinus raiutud kännud)!');
+    setTimeout(() => setNotification(null), 3500);
+  }, [kandudArvutused, mootmised.rinne, korgusRaieEelsest, uldinfo, onUpdate]);
 
   return (
     <div className="space-y-6">
@@ -433,8 +544,8 @@ export default function MootmisPanel({ project, onUpdate }: {
         </div>
         <div className="text-[11px] text-slate-400">
           {activeTab === 'puud'
-            ? 'Vali puuliik → sisesta mõõdetud puude arv vastava CM vahemiku reale. Liigu ridade vahel nooleklahvidega ↑↓ või Enter.'
-            : 'Vali puuliik → sisesta kändude arv vastava CM vahemiku reale. Nool ↓ = järgmine rida.'
+            ? 'Vali puuliik → sisesta mõõdetud puude arv vastava CM vahemiku reale. Liigu ridade vahel nooleklahvidega ↑↓ või Enter. Aktiivne rida on kollaselt esile tõstetud.'
+            : 'Vali puuliik → sisesta kändude arv vastava CM vahemiku reale. Nool ↓ = järgmine rida. Aktiivne rida on kollaselt esile tõstetud.'
           }
         </div>
         <LoendusTable
@@ -444,12 +555,12 @@ export default function MootmisPanel({ project, onUpdate }: {
         />
       </div>
 
-      {/* Results */}
+      {/* Results — Living trees */}
       {activeTab === 'puud' && puudArvutused && pindala > 0 && (
         <section className="card overflow-hidden">
           <div className="p-4 border-b border-slate-100">
-            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Arvutustulemused — kasvavad puud</div>
-            {!korgusRaieEelsest && <div className="text-[11px] text-amber-600 mt-1">Täius arvutatakse kui kõrgus on raie-eelses takseerkirjelduses olemas.</div>}
+            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Arvutustulemused — kasvavad puud (raie-järgne seis)</div>
+            {!korgusRaieEelsest && <div className="text-[11px] text-amber-600 mt-1">G ja täius arvutatakse kui kõrgus on raie-eelses takseerkirjelduses olemas.</div>}
           </div>
           <table className="w-full text-[11px] border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -459,7 +570,8 @@ export default function MootmisPanel({ project, onUpdate }: {
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Tk/ha</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Ø d (cm)</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">G (m²/ha)</th>
-                <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Täius (%)</th>
+                {korgusRaieEelsest > 0 && <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Gn (m²/ha)</th>}
+                {korgusRaieEelsest > 0 && <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">T = G/Gn</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -470,7 +582,12 @@ export default function MootmisPanel({ project, onUpdate }: {
                   <td className="px-3 py-2 text-right font-mono">{r.tkHa.toFixed(0)}</td>
                   <td className="px-3 py-2 text-right font-mono">{r.avgD.toFixed(1)}</td>
                   <td className="px-3 py-2 text-right font-mono">{r.gHa.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right font-mono font-bold">{r.taius.toFixed(0)}%</td>
+                  {korgusRaieEelsest > 0 && <td className="px-3 py-2 text-right font-mono text-slate-400">{r.gn.toFixed(1)}</td>}
+                  {korgusRaieEelsest > 0 && (
+                    <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">
+                      {(r.taius * 100).toFixed(0)}%
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -479,18 +596,34 @@ export default function MootmisPanel({ project, onUpdate }: {
                 <td className="px-3 py-2 font-bold text-slate-600" colSpan={2}>Kokku</td>
                 <td className="px-3 py-2 text-right font-mono font-bold">{puudArvutused.totalTk.toFixed(0)}</td>
                 <td className="px-3 py-2" />
-                <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">{puudArvutused.totalG.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">{puudArvutused.avgTaius.toFixed(0)}%</td>
+                <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">{puudArvutused.totalGHa.toFixed(2)}</td>
+                {korgusRaieEelsest > 0 && <td className="px-3 py-2" />}
+                {korgusRaieEelsest > 0 && (
+                  <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">
+                    {(puudArvutused.avgTaius * 100).toFixed(0)}%
+                  </td>
+                )}
               </tr>
             </tfoot>
           </table>
+          <div className="px-4 py-3 bg-forest-50/50 border-t border-forest-100 flex justify-between items-center">
+            <p className="text-[11px] text-forest-700">
+              Mõõdetud kasvavad puud = kasvama jäänud puid. Raie-järgne takseer täidetakse nende põhjal.
+            </p>
+            <button onClick={handleKannaFromPuud}
+              className="flex items-center gap-2 px-5 py-2.5 bg-forest-600 hover:bg-forest-700 text-white rounded-xl font-bold text-xs active:scale-95 transition-all shadow-sm whitespace-nowrap">
+              Kanna raie-järgsesse takseerkirjeldusse
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </section>
       )}
 
+      {/* Results — Stumps */}
       {activeTab === 'kandud' && kandudArvutused && pindala > 0 && (
         <section className="card overflow-hidden">
           <div className="p-4 border-b border-slate-100">
-            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Arvutustulemused — kännud</div>
+            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Arvutustulemused — kännud (raiutud puud)</div>
             {!korgusRaieEelsest && <div className="text-[11px] text-amber-600 mt-1">Raiemaht arvutatakse kui kõrgus on raie-eelses takseerkirjelduses olemas.</div>}
           </div>
           <table className="w-full text-[11px] border-collapse">
@@ -500,6 +633,7 @@ export default function MootmisPanel({ project, onUpdate }: {
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Tk</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Tk/ha</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Ø d₁.₃ (cm)</th>
+                <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">G raiutud (m²/ha)</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Maht (tm)</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-500 uppercase tracking-wider">Maht (tm/ha)</th>
               </tr>
@@ -511,6 +645,7 @@ export default function MootmisPanel({ project, onUpdate }: {
                   <td className="px-3 py-2 text-right font-mono">{r.count}</td>
                   <td className="px-3 py-2 text-right font-mono">{r.tkHa.toFixed(0)}</td>
                   <td className="px-3 py-2 text-right font-mono">{r.avgD13.toFixed(1)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{r.gHa.toFixed(2)}</td>
                   <td className="px-3 py-2 text-right font-mono">{r.mahtTm.toFixed(2)}</td>
                   <td className="px-3 py-2 text-right font-mono">{r.mahtHa.toFixed(2)}</td>
                 </tr>
@@ -519,23 +654,23 @@ export default function MootmisPanel({ project, onUpdate }: {
             <tfoot className="bg-slate-50 border-t-2 border-slate-200">
               <tr>
                 <td className="px-3 py-2 font-bold text-slate-600" colSpan={4}>Kokku</td>
+                <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">{kandudArvutused.totalGHa.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">{kandudArvutused.totalMahtTm.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right font-mono font-bold text-forest-700">{kandudArvutused.totalMahtHa.toFixed(2)}</td>
               </tr>
             </tfoot>
           </table>
+          <div className="px-4 py-3 bg-amber-50/50 border-t border-amber-100 flex justify-between items-center">
+            <p className="text-[11px] text-amber-800">
+              Kännud = raiutud puud. Raie-järgne takseer = raie-eelne miinus raiutud kogused.
+            </p>
+            <button onClick={handleKannaFromKandud}
+              className="flex items-center gap-2 px-5 py-2.5 bg-forest-600 hover:bg-forest-700 text-white rounded-xl font-bold text-xs active:scale-95 transition-all shadow-sm whitespace-nowrap">
+              Kanna raie-järgsesse takseerkirjeldusse
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </section>
-      )}
-
-      {/* Kanna takseerkirjeldusse */}
-      {(puudArvutused || kandudArvutused) && pindala > 0 && (
-        <div className="flex justify-end">
-          <button onClick={handleKannaTakseerisse}
-            className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm active:scale-95 transition-all shadow-sm">
-            Kanna raie-järgsesse takseerkirjeldusse
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
       )}
     </div>
   );
